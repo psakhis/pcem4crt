@@ -1,4 +1,4 @@
-#Visit original [PCem](https://pcem-emulator.co.uk/) for details
+#Visit original [PCem](https://pcem-emulator.co.uk/) for emulator details
 
 This is a mod for CRT users with add features:
 
