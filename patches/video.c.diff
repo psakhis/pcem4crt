@@ -1,0 +1,22 @@
+diff --git a/pcem-master/src/video.c b/pcem/src/video.c
+index 7c53f11..4c8e13f 100644
+--- a/pcem-master/src/video.c
++++ b/pcem/src/video.c
+@@ -726,7 +726,7 @@ void video_updatetiming()
+ int video_timing_read_b, video_timing_read_w, video_timing_read_l;
+ int video_timing_write_b, video_timing_write_w, video_timing_write_l;
+ 
+-int video_res_x, video_res_y, video_bpp;
++int video_res_x, video_res_y, video_bpp, video_res_x_crt, video_res_y_crt;
+ 
+ void (*video_blit_memtoscreen_func)(int x, int y, int y1, int y2, int w, int h);
+ 
+@@ -905,7 +905,7 @@ void video_init()
+ }
+ 
+ 
+-BITMAP *buffer32;
++PCEMBITMAP *buffer32;
+ 
+ uint8_t fontdat[2048][8];
+ uint8_t fontdatm[2048][16];

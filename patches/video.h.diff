@@ -1,0 +1,49 @@
+diff --git a/pcem-master/src/video.h b/pcem/src/video.h
+index 459abcb..bd661e8 100644
+--- a/pcem-master/src/video.h
++++ b/pcem/src/video.h
+@@ -3,11 +3,11 @@ typedef struct
+         int w, h;
+         uint8_t *dat;
+         uint8_t *line[0];
+-} BITMAP;
++} PCEMBITMAP; /*BITMAPreplace*/
+ 
+-extern BITMAP *screen;
++extern PCEMBITMAP *screen; /*BITMAPreplace*/
+ 
+-BITMAP *create_bitmap(int w, int h);
++PCEMBITMAP *create_bitmap(int w, int h); /*BITMAPreplace*/
+ 
+ typedef struct
+ {
+@@ -19,7 +19,7 @@ typedef RGB PALETTE[256];
+ #define makecol(r, g, b)    ((b) | ((g) << 8) | ((r) << 16))
+ #define makecol32(r, g, b)  ((b) | ((g) << 8) | ((r) << 16))
+ 
+-extern BITMAP *buffer32;
++extern PCEMBITMAP *buffer32; /*BITMAPreplace*/
+ 
+ int video_card_available(int card);
+ char *video_card_getname(int card);
+@@ -76,7 +76,7 @@ extern int video_timing_read_b, video_timing_read_w, video_timing_read_l;
+ extern int video_timing_write_b, video_timing_write_w, video_timing_write_l;
+ extern int video_speed;
+ 
+-extern int video_res_x, video_res_y, video_bpp;
++extern int video_res_x, video_res_y, video_bpp, video_res_x_crt, video_res_y_crt;
+ 
+ extern int vid_resize;
+ 
+@@ -104,9 +104,9 @@ void closevideo();
+ 
+ void video_updatetiming();
+ 
+-void hline(BITMAP *b, int x1, int y, int x2, int col);
++void hline(PCEMBITMAP *b, int x1, int y, int x2, int col); /*BITMAPreplace*/
+ 
+-void destroy_bitmap(BITMAP *b);
++void destroy_bitmap(PCEMBITMAP *b); /*BITMAPreplace*/
+ 
+ extern uint32_t cgapal[16];
+ 

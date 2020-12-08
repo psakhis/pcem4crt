@@ -1,0 +1,147 @@
+diff --git a/pcem-master/src/wx-sdl2-display-win.c b/pcem/src/wx-sdl2-display-win.c
+index ba2bdb6..6fc999a 100644
+--- a/pcem-master/src/wx-sdl2-display-win.c
++++ b/pcem/src/wx-sdl2-display-win.c
+@@ -16,6 +16,20 @@
+ #undef BITMAP
+ #endif
+ 
++/* switchres */
++#ifdef __cplusplus
++#include <cstring> // required for strcpy
++#endif
++#ifdef __linux__
++#define LIBSWR "libswitchres.so"
++#elif _WIN32
++#define LIBSWR "libswitchres.dll"
++#endif
++#include "switchres/switchres_wrapper.h"
++
++srAPI* SRobj;
++LIBTYPE dlp;
++
+ HHOOK hKeyboardHook;
+ 
+ static HINSTANCE hinstance = 0;
+@@ -75,7 +89,7 @@ extern void toggle_fullscreen();
+   move it.
+   This hard coded limit is highly fragile and will be replaced by a proper fix as
+   soon as I work out what that should be!*/
+-#define MIN_WIDTH 360
++#define MIN_WIDTH 256
+ 
+ void display_resize(int width, int height)
+ {
+@@ -315,6 +329,65 @@ LRESULT CALLBACK subWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
+         return 0;
+ }
+ 
++void svga_switchres_init() {
++const char* err_msg;
++
++	pclog("Switchres %s.\n", LIBSWR);
++
++	// Load the lib
++	dlp = OPENLIB(LIBSWR);
++
++	// Loading failed, inform and exit
++	if (!dlp) {
++		printf("Loading %s failed.\n", LIBSWR);
++		printf("Error: %s\n", LIBERROR());		
++	}
++
++	pclog("Loading %s succeded.\n", LIBSWR);
++
++	// Load the init()
++	LIBERROR();
++	SRobj =  (srAPI*)LIBFUNC(dlp, "srlib");
++	if ((err_msg = LIBERROR()) != NULL) {
++		printf("Failed to load srAPI: %s\n", err_msg);		
++	}
++	
++	// Testing the function
++	//pclog("Init a new switchres_manager object:\n");	
++		SRobj->init();
++		SRobj->sr_init_disp();        
++}	
++
++void svga_switchres_close() {
++        pclog("Closing switchres:\n");
++        SRobj->deinit();
++        CLOSELIB(dlp);
++}    
++
++void update_switchres(int x, int y) {
++	        
++	unsigned char ret;
++	sr_mode srm;
++        double rr = 60.0;
++	unsigned char interlace = 0;	
++	
++	if (y >= 400)
++	 interlace = 1;
++	pclog("Orignial resolution expected: %dx%d@%f-%d \n", x, y, rr, interlace);
++	ret = SRobj->sr_add_mode(x, y, rr, interlace, &srm);
++	if(!ret)
++	{
++		pclog("Switchres ERROR: couldn't add the required mode.\n");		
++	}
++
++	pclog("Got resolution: %dx%d%c@%f \n", srm.width, srm.height, srm.interlace, srm.refresh);
++	ret = SRobj->sr_switch_to_mode(srm.width, srm.height, srm.refresh, srm.interlace, &srm);
++	if(!ret)
++	{
++		pclog("Switchres ERROR: couldn't switch to the required mode. \n");		
++	}		            		
++}   
++
+ int display_init()
+ {
+         SDL_SetHint(SDL_HINT_WINDOWS_DISABLE_THREAD_NAMING, "1");
+@@ -327,12 +400,15 @@ int display_init()
+         SDL_version ver;
+         SDL_GetVersion(&ver);
+         printf("SDL %i.%i.%i initialized.\n", ver.major, ver.minor, ver.patch);
++        
++        svga_switchres_init();
+ 
+         return 1;
+ }
+ 
+ void display_close()
+ {
++	svga_switchres_close();
+         SDL_Quit();
+ }
+ 
+@@ -757,6 +833,30 @@ int render()
+                         if (event.window.event == SDL_WINDOWEVENT_RESIZED)
+                                 device_force_redraw();
+ 
++                        if (event.window.event == SDL_WINDOWEVENT_MAXIMIZED) {
++                         if (video_fullscreen_mode == 0) {
++                         	if (vid_resize!=0) //patch
++                          	 vid_resize=0;                            	
++                                pclog("Maximized Switchres %i x %i!!!\n", event.window.data1,event.window.data2);      
++                                SetMenu(hwnd, menu);
++                		SDL_SetWindowFullscreen(window, 0);
++                		SDL_SetWindowSize(window, remembered_rect.w, remembered_rect.h);
++                		SDL_SetWindowPosition(window, remembered_rect.x, remembered_rect.y);
++                		SDL_WarpMouseGlobal(remembered_mouse_x, remembered_mouse_y);
++                		device_force_redraw();                                                         
++                                update_switchres(event.window.data1,event.window.data2);                                     				                  
++                                window_doinputgrab = 1;                          	    
++                                window_dofullscreen = 1;           
++                         }   
++                          if (video_fullscreen_mode != 0) {  //needs vid_resize = 1 or 2     
++                          	if (vid_resize==0) //patch
++                          	 vid_resize=1;                	                                                 	
++                          	pclog("Exclusive Switchres %i x %i!!!\n", event.window.data1,event.window.data2);                                         	
++                                update_switchres(event.window.data1,event.window.data2);                                
++                                display_resize(event.window.data1,event.window.data2);                                   
++                                window_dofullscreen = 1;                                      
++                         }                                                                                                
++    		        }         
+                         if (window_remember)
+                         {
+                                 int flags = SDL_GetWindowFlags(window);

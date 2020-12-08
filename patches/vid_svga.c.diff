@@ -1,0 +1,80 @@
+diff --git a/pcem-master/src/vid_svga.c b/pcem/src/vid_svga.c
+index a8c978e..73623e5 100644
+--- a/pcem-master/src/vid_svga.c
++++ b/pcem/src/vid_svga.c
+@@ -9,8 +9,11 @@
+ #include "io.h"
+ #include "timer.h"
+ 
++#include <SDL2/SDL.h> /* patch event to switchres */
+ #define svga_output 0
+ 
++SDL_TimerID switchresTimer;
++int switchres_failure;
+ void svga_doblit(int y1, int y2, int wx, int wy, svga_t *svga);
+ 
+ extern uint8_t edatlookup[4][4];
+@@ -449,6 +452,31 @@ void svga_recalctimings(svga_t *svga)
+         printf("total %f on %i cycles off %i cycles frame %i sec %i %02X\n",disptime*crtcconst,svga->dispontime,svga->dispofftime,(svga->dispontime+svga->dispofftime)*svga->vtotal,(svga->dispontime+svga->dispofftime)*svga->vtotal*70,svga->seqregs[1]);
+ 
+         pclog("svga->render %08X\n", svga->render);*/
++        
++       /* patch vga 320x200 60hz*/           
++       if (svga->vtotal == 449 && svga->dispend == 400 && svga->vsyncstart == 413) {
++           svga->vtotal = 527;     
++           svga->vblankstart = 407;      
++           svga->vsyncstart = 491;
++       }                        
++}
++
++/* patch event to switchres */
++void update_switchresSDL(int x, int y) {
++        SDL_Event sdlevent;
++    	sdlevent.type = SDL_WINDOWEVENT;
++    	sdlevent.window.event = SDL_WINDOWEVENT_MAXIMIZED;
++    	sdlevent.window.data1 = x;
++    	sdlevent.window.data2 = y;
++    	SDL_PushEvent(&sdlevent); 
++}
++
++/* patch secure switchres */
++Uint32 switchresTimer_set(Uint32 interval, void* param)
++{
++        switchres_failure = 0;
++        SDL_RemoveTimer(switchresTimer);
++        return interval;
+ }
+ 
+ extern int cyc_total;
+@@ -737,6 +765,31 @@ void svga_poll(void *p)
+         }
+ //        printf("2 %i\n",svga_vsyncstart);
+ //pclog("svga_poll %i %i %i %i %i  %i %i\n", ins, svga->dispofftime, svga->dispontime, svga->vidtime, cyc_total, svga->linepos, svga->vc);
++        if (svga->video_res_x_crt == 0)
++        	    switchres_failure = 0;
++        	    
++        if ((switchres_failure == 0) && (svga->video_res_x >= 40 && svga->video_res_y >= 25) && (svga->video_res_x != svga->video_res_x_crt || svga->video_res_y != svga->video_res_y_crt)) {        	        
++        	        	
++        	
++        	if ((!(svga->gdcreg[6] & 1) && !(svga->attrregs[0x10] & 1)) && (svga->video_res_x == 40 && svga->video_res_y == 25)) {        		
++        		pclog("intentant actualitzar 320x200 %i %i \n",svga->video_res_x, svga->video_res_y);
++        		update_switchresSDL(320,200);        		
++        	}	
++	        if ((!(svga->gdcreg[6] & 1) && !(svga->attrregs[0x10] & 1)) && (svga->video_res_x > 40 && svga->video_res_y == 25)) {
++	        	  pclog("intentant actualitzar 720x400 %i %i %i \n",svga->video_res_x, svga->video_res_y, svga->char_width);	        		
++	        	  update_switchresSDL(720,400);           		  			        		       		          		  	
++        		}  
++                else      
++        	   if (svga->video_res_x >= 256 && svga->video_res_y >= 196 ) {
++        	   	pclog("intentant actualitzar %i x %i\n",svga->video_res_x, svga->video_res_y);	
++        		update_switchresSDL(svga->video_res_x, svga->video_res_y);
++        		        	
++        }
++        	switchres_failure = 1;
++                switchresTimer = SDL_AddTimer(500, switchresTimer_set, NULL); /* 0.5s every change */
++        	svga->video_res_x_crt = svga->video_res_x;	 	     		
++        	svga->video_res_y_crt = svga->video_res_y;	 	     		
++        }        
+ }
+ 
+ int svga_init(svga_t *svga, void *p, int memsize, 

@@ -1,0 +1,42 @@
+diff --git a/pcem-master/src/wx-sdl2-video.c b/pcem/src/wx-sdl2-video.c
+index f6551b0..d653779 100644
+--- a/pcem-master/src/wx-sdl2-video.c
++++ b/pcem/src/wx-sdl2-video.c
+@@ -12,8 +12,8 @@
+ 
+ void video_blit_complete();
+ 
+-BITMAP *screen;
+-static BITMAP *screen_copy = NULL;
++PCEMBITMAP *screen;
++static PCEMBITMAP *screen_copy = NULL;
+ static SDL_Rect screen_rect;
+ static SDL_Rect updated_rect;
+ static SDL_Rect updated_rect_copy;
+@@ -46,7 +46,7 @@ sdl_render_driver requested_render_driver;
+ char current_render_driver_name[50];
+ static sdl_renderer_t* renderer = NULL;
+ 
+-void hline(BITMAP *b, int x1, int y, int x2, int col)
++void hline(PCEMBITMAP *b, int x1, int y, int x2, int col)
+ {
+         if (y < 0 || y >= buffer32->h)
+            return;
+@@ -55,14 +55,14 @@ void hline(BITMAP *b, int x1, int y, int x2, int col)
+                 ((uint32_t *)b->line[y])[x1] = col;
+ }
+ 
+-void destroy_bitmap(BITMAP *b)
++void destroy_bitmap(PCEMBITMAP *b)
+ {
+         free(b);
+ }
+ 
+-BITMAP *create_bitmap(int x, int y)
++PCEMBITMAP *create_bitmap(int x, int y)
+ {
+-        BITMAP *b = malloc(sizeof(BITMAP) + (y * sizeof(uint8_t *)));
++        PCEMBITMAP *b = malloc(sizeof(PCEMBITMAP) + (y * sizeof(uint8_t *)));
+         int c;
+         b->dat = malloc(x * y * 4);
+         for (c = 0; c < y; c++)

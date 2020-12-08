@@ -1,0 +1,379 @@
+diff --git a/vid_svga.c b/vid_svga.c
+index a8c978e..73623e5 100644
+--- a/vid_svga.c
++++ b/vid_svga.c
+@@ -9,8 +9,11 @@
+ #include "io.h"
+ #include "timer.h"
+ 
++#include <SDL2/SDL.h> /* patch event to switchres */
+ #define svga_output 0
+ 
++SDL_TimerID switchresTimer;
++int switchres_failure;
+ void svga_doblit(int y1, int y2, int wx, int wy, svga_t *svga);
+ 
+ extern uint8_t edatlookup[4][4];
+@@ -449,6 +452,31 @@ void svga_recalctimings(svga_t *svga)
+         printf("total %f on %i cycles off %i cycles frame %i sec %i %02X\n",disptime*crtcconst,svga->dispontime,svga->dispofftime,(svga->dispontime+svga->dispofftime)*svga->vtotal,(svga->dispontime+svga->dispofftime)*svga->vtotal*70,svga->seqregs[1]);
+ 
+         pclog("svga->render %08X\n", svga->render);*/
++        
++       /* patch vga 320x200 60hz*/           
++       if (svga->vtotal == 449 && svga->dispend == 400 && svga->vsyncstart == 413) {
++           svga->vtotal = 527;     
++           svga->vblankstart = 407;      
++           svga->vsyncstart = 491;
++       }                        
++}
++
++/* patch event to switchres */
++void update_switchresSDL(int x, int y) {
++        SDL_Event sdlevent;
++    	sdlevent.type = SDL_WINDOWEVENT;
++    	sdlevent.window.event = SDL_WINDOWEVENT_MAXIMIZED;
++    	sdlevent.window.data1 = x;
++    	sdlevent.window.data2 = y;
++    	SDL_PushEvent(&sdlevent); 
++}
++
++/* patch secure switchres */
++Uint32 switchresTimer_set(Uint32 interval, void* param)
++{
++        switchres_failure = 0;
++        SDL_RemoveTimer(switchresTimer);
++        return interval;
+ }
+ 
+ extern int cyc_total;
+@@ -737,6 +765,31 @@ void svga_poll(void *p)
+         }
+ //        printf("2 %i\n",svga_vsyncstart);
+ //pclog("svga_poll %i %i %i %i %i  %i %i\n", ins, svga->dispofftime, svga->dispontime, svga->vidtime, cyc_total, svga->linepos, svga->vc);
++        if (svga->video_res_x_crt == 0)
++        	    switchres_failure = 0;
++        	    
++        if ((switchres_failure == 0) && (svga->video_res_x >= 40 && svga->video_res_y >= 25) && (svga->video_res_x != svga->video_res_x_crt || svga->video_res_y != svga->video_res_y_crt)) {        	        
++        	        	
++        	
++        	if ((!(svga->gdcreg[6] & 1) && !(svga->attrregs[0x10] & 1)) && (svga->video_res_x == 40 && svga->video_res_y == 25)) {        		
++        		pclog("intentant actualitzar 320x200 %i %i \n",svga->video_res_x, svga->video_res_y);
++        		update_switchresSDL(320,200);        		
++        	}	
++	        if ((!(svga->gdcreg[6] & 1) && !(svga->attrregs[0x10] & 1)) && (svga->video_res_x > 40 && svga->video_res_y == 25)) {
++	        	  pclog("intentant actualitzar 720x400 %i %i %i \n",svga->video_res_x, svga->video_res_y, svga->char_width);	        		
++	        	  update_switchresSDL(720,400);           		  			        		       		          		  	
++        		}  
++                else      
++        	   if (svga->video_res_x >= 256 && svga->video_res_y >= 196 ) {
++        	   	pclog("intentant actualitzar %i x %i\n",svga->video_res_x, svga->video_res_y);	
++        		update_switchresSDL(svga->video_res_x, svga->video_res_y);
++        		        	
++        }
++        	switchres_failure = 1;
++                switchresTimer = SDL_AddTimer(500, switchresTimer_set, NULL); /* 0.5s every change */
++        	svga->video_res_x_crt = svga->video_res_x;	 	     		
++        	svga->video_res_y_crt = svga->video_res_y;	 	     		
++        }        
+ }
+ 
+ int svga_init(svga_t *svga, void *p, int memsize, 
+diff --git a/vid_svga.h b/vid_svga.h
+index 9e49bfd..f0664bf 100644
+--- a/vid_svga.h
++++ b/vid_svga.h
+@@ -92,7 +92,7 @@ typedef struct svga_t
+                 
+         int fullchange;
+         
+-        int video_res_x, video_res_y, video_bpp;
++        int video_res_x, video_res_y, video_bpp, video_res_x_crt, video_res_y_crt;                                    
+         int video_res_override; /*If clear then SVGA code will set above variables, if
+                                   set then card code will*/
+         int frames, fps;
+diff --git a/video.c b/video.c
+index 7c53f11..4c8e13f 100644
+--- a/video.c
++++ b/video.c
+@@ -726,7 +726,7 @@ void video_updatetiming()
+ int video_timing_read_b, video_timing_read_w, video_timing_read_l;
+ int video_timing_write_b, video_timing_write_w, video_timing_write_l;
+ 
+-int video_res_x, video_res_y, video_bpp;
++int video_res_x, video_res_y, video_bpp, video_res_x_crt, video_res_y_crt;
+ 
+ void (*video_blit_memtoscreen_func)(int x, int y, int y1, int y2, int w, int h);
+ 
+@@ -905,7 +905,7 @@ void video_init()
+ }
+ 
+ 
+-BITMAP *buffer32;
++PCEMBITMAP *buffer32;
+ 
+ uint8_t fontdat[2048][8];
+ uint8_t fontdatm[2048][16];
+diff --git a/video.h b/video.h
+index 459abcb..bd661e8 100644
+--- a/video.h
++++ b/video.h
+@@ -3,11 +3,11 @@ typedef struct
+         int w, h;
+         uint8_t *dat;
+         uint8_t *line[0];
+-} BITMAP;
++} PCEMBITMAP; /*BITMAPreplace*/
+ 
+-extern BITMAP *screen;
++extern PCEMBITMAP *screen; /*BITMAPreplace*/
+ 
+-BITMAP *create_bitmap(int w, int h);
++PCEMBITMAP *create_bitmap(int w, int h); /*BITMAPreplace*/
+ 
+ typedef struct
+ {
+@@ -19,7 +19,7 @@ typedef RGB PALETTE[256];
+ #define makecol(r, g, b)    ((b) | ((g) << 8) | ((r) << 16))
+ #define makecol32(r, g, b)  ((b) | ((g) << 8) | ((r) << 16))
+ 
+-extern BITMAP *buffer32;
++extern PCEMBITMAP *buffer32; /*BITMAPreplace*/
+ 
+ int video_card_available(int card);
+ char *video_card_getname(int card);
+@@ -76,7 +76,7 @@ extern int video_timing_read_b, video_timing_read_w, video_timing_read_l;
+ extern int video_timing_write_b, video_timing_write_w, video_timing_write_l;
+ extern int video_speed;
+ 
+-extern int video_res_x, video_res_y, video_bpp;
++extern int video_res_x, video_res_y, video_bpp, video_res_x_crt, video_res_y_crt;
+ 
+ extern int vid_resize;
+ 
+@@ -104,9 +104,9 @@ void closevideo();
+ 
+ void video_updatetiming();
+ 
+-void hline(BITMAP *b, int x1, int y, int x2, int col);
++void hline(PCEMBITMAP *b, int x1, int y, int x2, int col); /*BITMAPreplace*/
+ 
+-void destroy_bitmap(BITMAP *b);
++void destroy_bitmap(PCEMBITMAP *b); /*BITMAPreplace*/
+ 
+ extern uint32_t cgapal[16];
+ 
+diff --git a/wx-sdl2-display-win.c b/wx-sdl2-display-win.c
+index ba2bdb6..6fc999a 100644
+--- a/wx-sdl2-display-win.c
++++ b/wx-sdl2-display-win.c
+@@ -16,6 +16,20 @@
+ #undef BITMAP
+ #endif
+ 
++/* switchres */
++#ifdef __cplusplus
++#include <cstring> // required for strcpy
++#endif
++#ifdef __linux__
++#define LIBSWR "libswitchres.so"
++#elif _WIN32
++#define LIBSWR "libswitchres.dll"
++#endif
++#include "switchres/switchres_wrapper.h"
++
++srAPI* SRobj;
++LIBTYPE dlp;
++
+ HHOOK hKeyboardHook;
+ 
+ static HINSTANCE hinstance = 0;
+@@ -75,7 +89,7 @@ extern void toggle_fullscreen();
+   move it.
+   This hard coded limit is highly fragile and will be replaced by a proper fix as
+   soon as I work out what that should be!*/
+-#define MIN_WIDTH 360
++#define MIN_WIDTH 256
+ 
+ void display_resize(int width, int height)
+ {
+@@ -315,6 +329,65 @@ LRESULT CALLBACK subWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
+         return 0;
+ }
+ 
++void svga_switchres_init() {
++const char* err_msg;
++
++	pclog("Switchres %s.\n", LIBSWR);
++
++	// Load the lib
++	dlp = OPENLIB(LIBSWR);
++
++	// Loading failed, inform and exit
++	if (!dlp) {
++		printf("Loading %s failed.\n", LIBSWR);
++		printf("Error: %s\n", LIBERROR());		
++	}
++
++	pclog("Loading %s succeded.\n", LIBSWR);
++
++	// Load the init()
++	LIBERROR();
++	SRobj =  (srAPI*)LIBFUNC(dlp, "srlib");
++	if ((err_msg = LIBERROR()) != NULL) {
++		printf("Failed to load srAPI: %s\n", err_msg);		
++	}
++	
++	// Testing the function
++	//pclog("Init a new switchres_manager object:\n");	
++		SRobj->init();
++		SRobj->sr_init_disp();        
++}	
++
++void svga_switchres_close() {
++        pclog("Closing switchres:\n");
++        SRobj->deinit();
++        CLOSELIB(dlp);
++}    
++
++void update_switchres(int x, int y) {
++	        
++	unsigned char ret;
++	sr_mode srm;
++        double rr = 60.0;
++	unsigned char interlace = 0;	
++	
++	if (y >= 400)
++	 interlace = 1;
++	pclog("Orignial resolution expected: %dx%d@%f-%d \n", x, y, rr, interlace);
++	ret = SRobj->sr_add_mode(x, y, rr, interlace, &srm);
++	if(!ret)
++	{
++		pclog("Switchres ERROR: couldn't add the required mode.\n");		
++	}
++
++	pclog("Got resolution: %dx%d%c@%f \n", srm.width, srm.height, srm.interlace, srm.refresh);
++	ret = SRobj->sr_switch_to_mode(srm.width, srm.height, srm.refresh, srm.interlace, &srm);
++	if(!ret)
++	{
++		pclog("Switchres ERROR: couldn't switch to the required mode. \n");		
++	}		            		
++}   
++
+ int display_init()
+ {
+         SDL_SetHint(SDL_HINT_WINDOWS_DISABLE_THREAD_NAMING, "1");
+@@ -327,12 +400,15 @@ int display_init()
+         SDL_version ver;
+         SDL_GetVersion(&ver);
+         printf("SDL %i.%i.%i initialized.\n", ver.major, ver.minor, ver.patch);
++        
++        svga_switchres_init();
+ 
+         return 1;
+ }
+ 
+ void display_close()
+ {
++	svga_switchres_close();
+         SDL_Quit();
+ }
+ 
+@@ -757,6 +833,30 @@ int render()
+                         if (event.window.event == SDL_WINDOWEVENT_RESIZED)
+                                 device_force_redraw();
+ 
++                        if (event.window.event == SDL_WINDOWEVENT_MAXIMIZED) {
++                         if (video_fullscreen_mode == 0) {
++                         	if (vid_resize!=0) //patch
++                          	 vid_resize=0;                            	
++                                pclog("Maximized Switchres %i x %i!!!\n", event.window.data1,event.window.data2);      
++                                SetMenu(hwnd, menu);
++                		SDL_SetWindowFullscreen(window, 0);
++                		SDL_SetWindowSize(window, remembered_rect.w, remembered_rect.h);
++                		SDL_SetWindowPosition(window, remembered_rect.x, remembered_rect.y);
++                		SDL_WarpMouseGlobal(remembered_mouse_x, remembered_mouse_y);
++                		device_force_redraw();                                                         
++                                update_switchres(event.window.data1,event.window.data2);                                     				                  
++                                window_doinputgrab = 1;                          	    
++                                window_dofullscreen = 1;           
++                         }   
++                          if (video_fullscreen_mode != 0) {  //needs vid_resize = 1 or 2     
++                          	if (vid_resize==0) //patch
++                          	 vid_resize=1;                	                                                 	
++                          	pclog("Exclusive Switchres %i x %i!!!\n", event.window.data1,event.window.data2);                                         	
++                                update_switchres(event.window.data1,event.window.data2);                                
++                                display_resize(event.window.data1,event.window.data2);                                   
++                                window_dofullscreen = 1;                                      
++                         }                                                                                                
++    		        }         
+                         if (window_remember)
+                         {
+                                 int flags = SDL_GetWindowFlags(window);
+diff --git a/wx-sdl2-video-renderer.c b/wx-sdl2-video-renderer.c
+index c06d64c..e00d7ce 100644
+--- a/wx-sdl2-video-renderer.c
++++ b/wx-sdl2-video-renderer.c
+@@ -69,7 +69,7 @@ void sdl_video_renderer_close()
+         }
+ }
+ 
+-void sdl_video_renderer_update(SDL_Window* window, SDL_Rect updated_rect, BITMAP* screen)
++void sdl_video_renderer_update(SDL_Window* window, SDL_Rect updated_rect, PCEMBITMAP* screen)
+ {
+         SDL_UpdateTexture(texture, &updated_rect, &((uint32_t*) screen->dat)[updated_rect.y * screen->w + updated_rect.x], screen->w * 4);
+ }
+diff --git a/wx-sdl2-video.c b/wx-sdl2-video.c
+index f6551b0..d653779 100644
+--- a/wx-sdl2-video.c
++++ b/wx-sdl2-video.c
+@@ -12,8 +12,8 @@
+ 
+ void video_blit_complete();
+ 
+-BITMAP *screen;
+-static BITMAP *screen_copy = NULL;
++PCEMBITMAP *screen;
++static PCEMBITMAP *screen_copy = NULL;
+ static SDL_Rect screen_rect;
+ static SDL_Rect updated_rect;
+ static SDL_Rect updated_rect_copy;
+@@ -46,7 +46,7 @@ sdl_render_driver requested_render_driver;
+ char current_render_driver_name[50];
+ static sdl_renderer_t* renderer = NULL;
+ 
+-void hline(BITMAP *b, int x1, int y, int x2, int col)
++void hline(PCEMBITMAP *b, int x1, int y, int x2, int col)
+ {
+         if (y < 0 || y >= buffer32->h)
+            return;
+@@ -55,14 +55,14 @@ void hline(BITMAP *b, int x1, int y, int x2, int col)
+                 ((uint32_t *)b->line[y])[x1] = col;
+ }
+ 
+-void destroy_bitmap(BITMAP *b)
++void destroy_bitmap(PCEMBITMAP *b)
+ {
+         free(b);
+ }
+ 
+-BITMAP *create_bitmap(int x, int y)
++PCEMBITMAP *create_bitmap(int x, int y)
+ {
+-        BITMAP *b = malloc(sizeof(BITMAP) + (y * sizeof(uint8_t *)));
++        PCEMBITMAP *b = malloc(sizeof(PCEMBITMAP) + (y * sizeof(uint8_t *)));
+         int c;
+         b->dat = malloc(x * y * 4);
+         for (c = 0; c < y; c++)
+diff --git a/wx-sdl2-video.h b/wx-sdl2-video.h
+index a32d97d..ae7d448 100644
+--- a/wx-sdl2-video.h
++++ b/wx-sdl2-video.h
+@@ -11,7 +11,7 @@ struct sdl_render_driver;
+ typedef struct sdl_renderer_t {
+         int (*init)(SDL_Window* window, struct sdl_render_driver driver, SDL_Rect screen);
+         void (*close)();
+-        void (*update)(SDL_Window* window, SDL_Rect updated_rect, BITMAP* screen);
++        void (*update)(SDL_Window* window, SDL_Rect updated_rect, PCEMBITMAP* screen);
+         void (*present)(SDL_Window* window, SDL_Rect texture_rect, SDL_Rect window_rect, SDL_Rect screen);
+         int always_update;
+ } sdl_renderer_t;

@@ -1,0 +1,13 @@
+diff --git a/pcem-master/src/vid_svga.h b/pcem/src/vid_svga.h
+index 9e49bfd..f0664bf 100644
+--- a/pcem-master/src/vid_svga.h
++++ b/pcem/src/vid_svga.h
+@@ -92,7 +92,7 @@ typedef struct svga_t
+                 
+         int fullchange;
+         
+-        int video_res_x, video_res_y, video_bpp;
++        int video_res_x, video_res_y, video_bpp, video_res_x_crt, video_res_y_crt;                                    
+         int video_res_override; /*If clear then SVGA code will set above variables, if
+                                   set then card code will*/
+         int frames, fps;
